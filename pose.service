@@ -1,0 +1,15 @@
+[Unit]
+Description=Pose API Service
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root
+ExecStart=/usr/bin/python3 /root/main.py
+Restart=on-failure
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
