@@ -227,7 +227,7 @@ def run_inference_image(image: np.ndarray, max_persons: int = MAX_PERSONS_PER_FR
     # ---- Package results ----
     start_time_real = time.time()
     merged_results = []
-    for idx, sample in enumerate(pose2d_results):
+    for idx, sample in enumerate(tracked_results):
         # kpts3d = sample.pred_instances.keypoints[0].tolist()
         kpts2d = tracked_results[idx].pred_instances.keypoints.tolist()
         bbox = tracked_results[idx].pred_instances.bboxes[0].tolist()
