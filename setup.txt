@@ -1,5 +1,5 @@
 103.78.3.29
-Jsjm_D&77&9KA2y!
+(I(h5L-EZ#12p2hw
 
 sudo apt update
 sudo apt install git wget unzip

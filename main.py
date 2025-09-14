@@ -171,7 +171,7 @@ tracker = DeepSort(
 # ---- GPU lock ----
 gpu_lock = Lock()
 
-def run_inference_image(image: np.ndarray):
+def run_inference_image(image: np.ndarray, max_persons: int = MAX_PERSONS_PER_FRAME):
     """Run full 2D + 3D inference on a single image (OpenCV BGR)."""
     # Step 1: Run 2D pose
     with gpu_lock:
@@ -185,7 +185,7 @@ def run_inference_image(image: np.ndarray):
 
     # Step 1.5: Filter to top N persons based on bbox area and confidence
     start_time_real = time.time()
-    pose2d_results = filter_top_persons(pose2d_results, max_persons=MAX_PERSONS_PER_FRAME)
+    pose2d_results = filter_top_persons(pose2d_results, max_persons=max_persons)
     end_time_real = time.time()
     print("filter top person time: ", end_time_real - start_time_real, )
 
@@ -214,21 +214,21 @@ def run_inference_image(image: np.ndarray):
         track_id = t.track_id
         track_map[i] = track_id
 
-    with gpu_lock:
-        start_time_real = time.time()
-        pose3d_results = inference_pose_lifter_model(
-            pose3d_model, [tracked_results], image_size=image.shape[:2]
-        )
-        end_time_real = time.time()
-        print("inference 3d time: ", end_time_real - start_time_real)
+    # with gpu_lock:
+    #     start_time_real = time.time()
+    #     pose3d_results = inference_pose_lifter_model(
+    #         pose3d_model, [tracked_results], image_size=image.shape[:2]
+    #     )
+    #     end_time_real = time.time()
+    #     print("inference 3d time: ", end_time_real - start_time_real)
 
     # print("pose3d_results", pose3d_results)
 
     # ---- Package results ----
     start_time_real = time.time()
     merged_results = []
-    for idx, sample in enumerate(pose3d_results):
-        kpts3d = sample.pred_instances.keypoints[0].tolist()
+    for idx, sample in enumerate(pose2d_results):
+        # kpts3d = sample.pred_instances.keypoints[0].tolist()
         kpts2d = tracked_results[idx].pred_instances.keypoints.tolist()
         bbox = tracked_results[idx].pred_instances.bboxes[0].tolist()
 
@@ -247,7 +247,7 @@ def run_inference_image(image: np.ndarray):
             {
                 "track_id": track_id,
                 "keypoints_2d": kpts2d[0],
-                "keypoints_3d": kpts3d[0],
+                # "keypoints_3d": kpts3d[0],
                 "bbox":bbox,
             }
         )
@@ -303,18 +303,13 @@ def handle_frame(data):
         nparr = np.frombuffer(data, np.uint8)
     
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
     # Run full pose inference
-    result = run_inference_image(image)
-        
-    # Send real pose data
-    # _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    # image_binary = buffer.tobytes()
+    result = run_inference_image(image, MAX_PERSONS_PER_FRAME)
         
     emit("pose_result", {
-        # "image": image_binary,
         "poses": result,
-        "success": True,
-        # "is_interpolated": False
+        "success": True
     })
    
 if __name__ == "__main__":
