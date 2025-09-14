@@ -13,7 +13,7 @@ from copy import deepcopy
 
 # ---- Configuration ----
 MAX_PERSONS_PER_FRAME = 3  # Maximum number of persons to process per frame
-MIN_CONFIDENCE_SCORE = 0.6  # Minimum confidence score threshold
+MIN_CONFIDENCE_SCORE = 0.5  # Minimum confidence score threshold
 
 
 def filter_top_persons(pose2d_results, max_persons=MAX_PERSONS_PER_FRAME):
@@ -58,11 +58,7 @@ def filter_top_persons(pose2d_results, max_persons=MAX_PERSONS_PER_FRAME):
     # Take top N persons
     top_persons = all_persons[:max_persons]
     
-    print(f"Person filtering: {len(all_persons)} candidates -> {len(top_persons)} selected")
-    if top_persons:
-        print("Top persons:")
-        for i, person in enumerate(top_persons):
-            print(f"  {i+1}. Score: {person['score']:.3f}, Area: {person['area']:.0f}, Combined: {person['combined_score']:.0f}")
+    print(f"Filtered from {len(all_persons)} to {len(top_persons)} persons")
     
     # Reconstruct pose2d_results with only top persons
     if not top_persons:
@@ -175,7 +171,6 @@ tracker = DeepSort(
 # ---- GPU lock ----
 gpu_lock = Lock()
 
-
 def run_inference_image(image: np.ndarray):
     """Run full 2D + 3D inference on a single image (OpenCV BGR)."""
     # Step 1: Run 2D pose
@@ -189,8 +184,11 @@ def run_inference_image(image: np.ndarray):
         return {"2d": [], "3d": [], "analysis": {}}
 
     # Step 1.5: Filter to top N persons based on bbox area and confidence
+    start_time_real = time.time()
     pose2d_results = filter_top_persons(pose2d_results, max_persons=MAX_PERSONS_PER_FRAME)
-    
+    end_time_real = time.time()
+    print("filter top person time: ", end_time_real - start_time_real, )
+
     if len(pose2d_results) == 0:
         return {"2d": [], "3d": [], "analysis": {}}
 
@@ -276,13 +274,13 @@ def handle_image():
     result = run_inference_image(image)
     
     # Encode the processed image as JPEG binary
-    _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    image_binary = buffer.tobytes()
+    # _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    # image_binary = buffer.tobytes()
     
     # Return both pose results and processed image
     return jsonify({
         "poses": result,
-        "image": base64.b64encode(image_binary).decode('utf-8'),  # Base64 for JSON response
+        # "image": base64.b64encode(image_binary).decode('utf-8'),  # Base64 for JSON response
         "success": True
     })
 
@@ -295,7 +293,7 @@ def health_check():
 
 # ---- WebSocket Events ----
 @socketio.on("frame")
-def handle_frame(data):
+def handle_frame(data):    
     # Handle both base64 and binary data
     if isinstance(data, str):
         # Base64 encoded data
@@ -305,20 +303,20 @@ def handle_frame(data):
         nparr = np.frombuffer(data, np.uint8)
     
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    # Run full pose inference
     result = run_inference_image(image)
-    
-    # Encode the processed image as JPEG binary
-    _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    image_binary = buffer.tobytes()
-    
-    # Send both image and pose results
+        
+    # Send real pose data
+    # _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    # image_binary = buffer.tobytes()
+        
     emit("pose_result", {
-        "image": image_binary,
+        # "image": image_binary,
         "poses": result,
-        "success": True
+        "success": True,
+        # "is_interpolated": False
     })
-
-
+   
 if __name__ == "__main__":
     print("Server started")
     # Use gevent WSGI server with websocket support

@@ -1,0 +1,10 @@
+103.78.3.29
+Jsjm_D&77&9KA2y!
+
+sudo apt update
+sudo apt install git wget unzip
+git clone https://github.com/open-mmlab/mmpose.git
+scp main.py, requirements.txt
+scp pose.service -> /etc/systemd/system/
+pip install -r requirements.txt
+python3 ~/main.py
