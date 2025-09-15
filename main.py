@@ -20,80 +20,77 @@ def filter_top_persons(pose2d_results, max_persons=MAX_PERSONS_PER_FRAME):
     """Filter to keep only top N persons based on bbox area and confidence score."""
     if not pose2d_results:
         return pose2d_results
-    
+
     all_persons = []
-    
+
     # Extract all persons from all samples
     for sample in pose2d_results:
         inst = sample.pred_instances
         for i in range(len(inst.bboxes)):
             bbox = inst.bboxes[i]
             score = float(inst.scores[i])
-            
+
             # Skip persons with low confidence
             if score < MIN_CONFIDENCE_SCORE:
                 continue
-            
+
             # Calculate bbox area
             bbox_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-            
+
             # Skip persons with very small bbox area (likely false positives)
             if bbox_area < 1000:  # Minimum area threshold
                 continue
-            
+
             # Create person data with score and area
             person_data = {
-                'sample': sample,
-                'person_index': i,
-                'bbox': bbox,
-                'score': score,
-                'area': bbox_area,
-                'combined_score': score * bbox_area  # Weighted combination
+                "sample": sample,
+                "person_index": i,
+                "bbox": bbox,
+                "score": score,
+                "area": bbox_area,
+                "combined_score": score * bbox_area,  # Weighted combination
             }
             all_persons.append(person_data)
-    
+
     # Sort by combined score (confidence * area) in descending order
-    all_persons.sort(key=lambda x: x['combined_score'], reverse=True)
-    
+    all_persons.sort(key=lambda x: x["combined_score"], reverse=True)
+
     # Take top N persons
     top_persons = all_persons[:max_persons]
-    
+
     print(f"Filtered from {len(all_persons)} to {len(top_persons)} persons")
-    
+
     # Reconstruct pose2d_results with only top persons
     if not top_persons:
         return []
-    
+
     # Group by original sample
     sample_groups = {}
     for person in top_persons:
-        sample_id = id(person['sample'])
+        sample_id = id(person["sample"])
         if sample_id not in sample_groups:
-            sample_groups[sample_id] = {
-                'sample': person['sample'],
-                'indices': []
-            }
-        sample_groups[sample_id]['indices'].append(person['person_index'])
-    
+            sample_groups[sample_id] = {"sample": person["sample"], "indices": []}
+        sample_groups[sample_id]["indices"].append(person["person_index"])
+
     # Create filtered samples
     filtered_results = []
     for group in sample_groups.values():
-        sample = group['sample']
-        indices = group['indices']
-        
+        sample = group["sample"]
+        indices = group["indices"]
+
         # Create new sample with only selected persons
         filtered_sample = deepcopy(sample)
         inst = sample.pred_instances
-        
+
         # Filter instances by indices
         filtered_inst = type(inst)(
             bboxes=inst.bboxes[indices],
             scores=inst.scores[indices],
-            keypoints=inst.keypoints[indices]
+            keypoints=inst.keypoints[indices],
         )
         filtered_sample.pred_instances = filtered_inst
         filtered_results.append(filtered_sample)
-    
+
     return filtered_results
 
 
@@ -171,6 +168,7 @@ tracker = DeepSort(
 # ---- GPU lock ----
 gpu_lock = Lock()
 
+
 def run_inference_image(image: np.ndarray, max_persons: int = MAX_PERSONS_PER_FRAME):
     """Run full 2D + 3D inference on a single image (OpenCV BGR)."""
     # Step 1: Run 2D pose
@@ -178,7 +176,10 @@ def run_inference_image(image: np.ndarray, max_persons: int = MAX_PERSONS_PER_FR
         start_time_real = time.time()
         pose2d_results = inference_topdown(pose2d_model, image)
         end_time_real = time.time()
-        print("inference 2d time: ", end_time_real - start_time_real, )
+        print(
+            "inference 2d time: ",
+            end_time_real - start_time_real,
+        )
 
     if len(pose2d_results) == 0:
         return {"2d": [], "3d": [], "analysis": {}}
@@ -187,7 +188,10 @@ def run_inference_image(image: np.ndarray, max_persons: int = MAX_PERSONS_PER_FR
     start_time_real = time.time()
     pose2d_results = filter_top_persons(pose2d_results, max_persons=max_persons)
     end_time_real = time.time()
-    print("filter top person time: ", end_time_real - start_time_real, )
+    print(
+        "filter top person time: ",
+        end_time_real - start_time_real,
+    )
 
     if len(pose2d_results) == 0:
         return {"2d": [], "3d": [], "analysis": {}}
@@ -248,7 +252,7 @@ def run_inference_image(image: np.ndarray, max_persons: int = MAX_PERSONS_PER_FR
                 "track_id": track_id,
                 "keypoints_2d": kpts2d[0],
                 # "keypoints_3d": kpts3d[0],
-                "bbox":bbox,
+                "bbox": bbox,
             }
         )
 
@@ -272,17 +276,19 @@ def handle_image():
         return jsonify({"error": "Invalid image"}), 400
 
     result = run_inference_image(image)
-    
+
     # Encode the processed image as JPEG binary
     # _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
     # image_binary = buffer.tobytes()
-    
+
     # Return both pose results and processed image
-    return jsonify({
-        "poses": result,
-        # "image": base64.b64encode(image_binary).decode('utf-8'),  # Base64 for JSON response
-        "success": True
-    })
+    return jsonify(
+        {
+            "poses": result,
+            # "image": base64.b64encode(image_binary).decode('utf-8'),  # Base64 for JSON response
+            "success": True,
+        }
+    )
 
 
 # health check endpoint
@@ -293,7 +299,7 @@ def health_check():
 
 # ---- WebSocket Events ----
 @socketio.on("frame")
-def handle_frame(data):    
+def handle_frame(data):
     # Handle both base64 and binary data
     if isinstance(data, str):
         # Base64 encoded data
@@ -301,18 +307,17 @@ def handle_frame(data):
     else:
         # Binary data
         nparr = np.frombuffer(data, np.uint8)
-    
+
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
+
     # Run full pose inference
     result = run_inference_image(image, MAX_PERSONS_PER_FRAME)
-        
-    emit("pose_result", {
-        "poses": result,
-        "success": True
-    })
-   
+
+    emit("pose_result", {"poses": result, "success": True})
+
+
 if __name__ == "__main__":
     print("Server started")
-    # Use gevent WSGI server with websocket support
+    # Use eventlet WSGI server with websocket support
+    # eventlet requires certfile and keyfile instead of ssl_context
     socketio.run(app, host="0.0.0.0", port=5000)
